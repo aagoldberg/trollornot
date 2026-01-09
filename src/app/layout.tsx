@@ -13,17 +13,27 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_URL || "https://trollornot.com"),
   title: "TrollOrNot - Detect Trolling in Conversations",
-  description: "Paste a conversation to detect trolling, bad faith arguments, and engagement bait. Works with Discord, Slack, Twitter, and more.",
+  description: "Paste a conversation or screenshot to detect trolling, bad faith arguments, and engagement bait. Works with Discord, Slack, Twitter, and more.",
   openGraph: {
-    title: "TrollOrNot - Detect Trolling in Conversations",
-    description: "Paste a conversation to detect trolling, bad faith arguments, and engagement bait.",
+    title: "TrollOrNot - Is this person trolling you?",
+    description: "Paste a conversation or screenshot to detect trolling, bad faith arguments, and engagement bait.",
     type: "website",
+    images: [
+      {
+        url: "/api/og",
+        width: 1200,
+        height: 630,
+        alt: "TrollOrNot - Detect Trolling in Conversations",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "TrollOrNot - Detect Trolling in Conversations",
-    description: "Paste a conversation to detect trolling, bad faith arguments, and engagement bait.",
+    title: "TrollOrNot - Is this person trolling you?",
+    description: "Paste a conversation or screenshot to detect trolling, bad faith arguments, and engagement bait.",
+    images: ["/api/og"],
   },
 };
 
