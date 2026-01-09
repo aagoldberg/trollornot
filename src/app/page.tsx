@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 
 type Verdict = "genuine" | "suspicious" | "trolling";
 
@@ -318,18 +318,73 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showHighlights, setShowHighlights] = useState(true);
+  const [image, setImage] = useState<{ data: string; type: string; preview: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      // Extract base64 data (remove data:image/...;base64, prefix)
+      const base64 = dataUrl.split(",")[1];
+      const mediaType = file.type as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+      setImage({ data: base64, type: mediaType, preview: dataUrl });
+      setConversation(""); // Clear text when image is added
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleImageFile(file);
+        return;
+      }
+    }
+  }, [handleImageFile]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleImageFile(file);
+  }, [handleImageFile]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const clearImage = () => {
+    setImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const analyze = async () => {
-    if (!conversation.trim()) return;
+    if (!conversation.trim() && !image) return;
 
     setLoading(true);
     setResult(null);
 
     try {
+      const body: Record<string, string> = {};
+
+      if (image) {
+        body.image = image.data;
+        body.imageType = image.type;
+      } else {
+        body.conversation = conversation.trim();
+      }
+
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation: conversation.trim() }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
@@ -351,6 +406,7 @@ export default function Home() {
 
   const tryExample = () => {
     setConversation(EXAMPLE_CONVERSATION);
+    clearImage();
   };
 
   return (
@@ -377,7 +433,7 @@ export default function Home() {
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-purple-600">trolling you?</span>
             </h1>
             <p className="text-lg text-zinc-600 dark:text-zinc-400 mb-8 leading-relaxed">
-              Paste a conversation to detect trolling, bad faith arguments, and engagement bait.
+              Paste a conversation or screenshot to detect trolling, bad faith arguments, and engagement bait.
             </p>
           </div>
         )}
@@ -385,32 +441,79 @@ export default function Home() {
         {/* Input Form */}
         {!result && (
           <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
-            <div className="relative">
-              <textarea
-                value={conversation}
-                onChange={(e) => setConversation(e.target.value)}
-                placeholder="Paste your conversation here...
+            <div
+              className="relative"
+              onPaste={handlePaste}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+            >
+              {image ? (
+                <div className="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
+                  <button
+                    type="button"
+                    onClick={clearImage}
+                    className="absolute top-2 right-2 p-1 bg-zinc-800/80 hover:bg-zinc-700 text-white rounded-full z-10"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <img
+                    src={image.preview}
+                    alt="Screenshot to analyze"
+                    className="max-h-80 mx-auto rounded-lg"
+                  />
+                  <p className="text-center text-xs text-zinc-500 mt-3">
+                    Screenshot ready for analysis
+                  </p>
+                </div>
+              ) : (
+                <textarea
+                  value={conversation}
+                  onChange={(e) => setConversation(e.target.value)}
+                  placeholder="Paste your conversation or screenshot here...
 
-Example formats:
-• Discord: Username — Today at 12:34 PM
-• Slack: Username  12:34 PM
-• Twitter: @username · 2h
-• Generic: Username: message"
-                className="w-full h-64 px-4 py-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none font-mono text-sm"
-                required
-              />
+You can:
+• Paste text (Cmd/Ctrl+V)
+• Paste a screenshot (Cmd/Ctrl+V)
+• Drag & drop an image
+• Upload an image
+
+Supported formats: Discord, Slack, Twitter, iMessage, etc."
+                  className="w-full h-64 px-4 py-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none font-mono text-sm"
+                />
+              )}
             </div>
+
             <div className="mt-4 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={tryExample}
-                className="text-sm font-medium text-zinc-500 hover:text-purple-600 transition-colors"
-              >
-                Try an example
-              </button>
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={tryExample}
+                  className="text-sm font-medium text-zinc-500 hover:text-purple-600 transition-colors"
+                >
+                  Try an example
+                </button>
+                <label className="text-sm font-medium text-zinc-500 hover:text-purple-600 transition-colors cursor-pointer flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Upload image
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleImageFile(file);
+                    }}
+                  />
+                </label>
+              </div>
               <button
                 type="submit"
-                disabled={loading || !conversation.trim()}
+                disabled={loading || (!conversation.trim() && !image)}
                 className="px-6 py-3 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {loading ? (
@@ -419,7 +522,7 @@ Example formats:
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    Analyzing...
+                    {image ? "Extracting & Analyzing..." : "Analyzing..."}
                   </>
                 ) : (
                   "Analyze"
@@ -438,6 +541,7 @@ Example formats:
                 onClick={() => {
                   setResult(null);
                   setConversation("");
+                  clearImage();
                 }}
                 className="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 flex items-center gap-1 transition-colors"
               >

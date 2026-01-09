@@ -6,6 +6,70 @@ const client = process.env.ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null;
 
+// Extract conversation text from a screenshot using Claude Vision
+export async function extractConversationFromImage(
+  imageBase64: string,
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+): Promise<{ success: boolean; text?: string; error?: string }> {
+  if (!client) {
+    return { success: false, error: "AI not available for image processing" };
+  }
+
+  try {
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4000,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mediaType,
+                data: imageBase64,
+              },
+            },
+            {
+              type: "text",
+              text: `Extract the conversation from this screenshot. Output ONLY the conversation text in a clean format like:
+
+Username: message text
+Username: message text
+
+Rules:
+- Include all messages visible in the screenshot
+- Preserve the original usernames/handles exactly as shown
+- Include timestamps if visible (in brackets before the message)
+- Don't add any commentary, headers, or explanations
+- If this is not a conversation/chat screenshot, respond with: NOT_A_CONVERSATION
+
+Output the raw conversation text only:`,
+            },
+          ],
+        },
+      ],
+    });
+
+    const content = response.content[0];
+    if (content.type !== "text") {
+      return { success: false, error: "Unexpected response format" };
+    }
+
+    const text = content.text.trim();
+
+    if (text === "NOT_A_CONVERSATION" || text.includes("NOT_A_CONVERSATION")) {
+      return { success: false, error: "This doesn't appear to be a conversation screenshot" };
+    }
+
+    return { success: true, text };
+  } catch (error) {
+    console.error("Image extraction failed:", error);
+    return { success: false, error: "Failed to process image" };
+  }
+}
+
 export interface LLMAnalysis {
   adjustedScore: number;
   adjustedVerdict: Verdict;

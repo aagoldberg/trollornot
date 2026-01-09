@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseConversation, ParsedMessage } from "@/lib/parser";
 import { scoreConversation, SignalBreakdown, Verdict, MessageScoreResult } from "@/lib/score";
-import { enhanceWithLLM, isLLMAvailable } from "@/lib/llm";
+import { enhanceWithLLM, isLLMAvailable, extractConversationFromImage } from "@/lib/llm";
 import { logAnalysis, hashConversation } from "@/lib/db";
 
 export interface MessageAnalysis {
@@ -35,7 +35,7 @@ export interface AnalyzeResponse {
 export async function POST(request: NextRequest): Promise<NextResponse<AnalyzeResponse>> {
   try {
     const body = await request.json();
-    const { conversation } = body;
+    const { conversation, image, imageType } = body;
 
     // Capture visitor info
     const ipAddress =
@@ -45,14 +45,28 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalyzeRe
     const userAgent = request.headers.get("user-agent") || null;
     const country = request.headers.get("x-vercel-ip-country") || null;
 
-    if (!conversation || typeof conversation !== "string") {
+    let conversationText = conversation;
+
+    // If image is provided, extract conversation from it
+    if (image && imageType) {
+      const extraction = await extractConversationFromImage(image, imageType);
+      if (!extraction.success) {
+        return NextResponse.json(
+          { success: false, error: extraction.error || "Failed to extract conversation from image" },
+          { status: 422 }
+        );
+      }
+      conversationText = extraction.text;
+    }
+
+    if (!conversationText || typeof conversationText !== "string") {
       return NextResponse.json(
-        { success: false, error: "Conversation text is required" },
+        { success: false, error: "Conversation text or image is required" },
         { status: 400 }
       );
     }
 
-    if (conversation.trim().length < 10) {
+    if (conversationText.trim().length < 10) {
       return NextResponse.json(
         { success: false, error: "Conversation is too short to analyze" },
         { status: 400 }
@@ -60,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalyzeRe
     }
 
     // Parse the conversation
-    const parsed = parseConversation(conversation);
+    const parsed = parseConversation(conversationText);
 
     if (parsed.messages.length === 0) {
       return NextResponse.json(
@@ -128,7 +142,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalyzeRe
 
     // Log the analysis
     logAnalysis({
-      conversationHash: hashConversation(conversation),
+      conversationHash: hashConversation(conversationText),
       messageCount: parsed.messages.length,
       participantCount: parsed.participantCount,
       platform: parsed.platform,
