@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.71.2",
     "@neondatabase/serverless": "^1.0.2",
     "@vercel/analytics": "^1.6.1",
+    "@vercel/og": "^0.8.6",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"
