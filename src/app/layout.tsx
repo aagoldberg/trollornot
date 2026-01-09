@@ -16,10 +16,37 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_URL || "https://trollornot.com"),
   title: "TrollOrNot - Detect Trolling in Conversations",
   description: "Paste a conversation or screenshot to detect trolling, bad faith arguments, and engagement bait. Works with Discord, Slack, Twitter, and more.",
+  keywords: [
+    "troll detector",
+    "trolling detection",
+    "bad faith argument",
+    "engagement bait",
+    "online harassment",
+    "conversation analyzer",
+    "Discord troll",
+    "Twitter troll",
+    "social media analysis",
+    "AI troll detection",
+  ],
+  authors: [{ name: "TrollOrNot" }],
+  creator: "TrollOrNot",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
   openGraph: {
     title: "TrollOrNot - Is this person trolling you?",
     description: "Paste a conversation or screenshot to detect trolling, bad faith arguments, and engagement bait.",
     type: "website",
+    locale: "en_US",
+    siteName: "TrollOrNot",
     images: [
       {
         url: "/api/og",
