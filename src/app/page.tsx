@@ -255,7 +255,7 @@ Verdict: ${verdictLabel} (${result.overallScore}/100)
     if (result.aggregateSignals) {
       text += `Signals Detected:\n`;
       const signals = Object.entries(result.aggregateSignals)
-        .filter(([, v]) => v > 20)
+        .filter(([, v]) => v > 0)
         .sort(([, a], [, b]) => b - a);
       for (const [key, value] of signals) {
         text += `• ${SIGNAL_LABELS[key as keyof SignalBreakdown]}: ${value}%\n`;
