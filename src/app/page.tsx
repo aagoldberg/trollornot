@@ -251,198 +251,192 @@ function ShareableImage({ result }: { result: AnalysisResult }) {
     canvas.width = width;
     canvas.height = height;
 
-    // Background
+    // 1. Background
     ctx.fillStyle = "#09090b";
     ctx.fillRect(0, 0, width, height);
+    
+    // 2. Header
+    ctx.fillStyle = "#18181b";
+    ctx.fillRect(0, 0, width, 80);
+    ctx.strokeStyle = "#27272a";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, width, 80);
 
-    // Subtle gradient overlay
-    const gradient = ctx.createRadialGradient(300, 200, 0, 300, 200, 400);
-    gradient.addColorStop(0, "rgba(30, 30, 36, 0.8)");
-    gradient.addColorStop(1, "transparent");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
+    // Header Content
+    ctx.font = "bold 22px monospace";
+    ctx.fillStyle = "#fafafa";
+    ctx.fillText("TROLLORNOT // CLASSIFIED REPORT", 40, 48);
 
-    // Verdict colors
+    const scanId = Math.random().toString(36).substring(2, 10).toUpperCase();
+    ctx.font = "12px monospace";
+    ctx.fillStyle = "#71717a";
+    ctx.textAlign = "right";
+    ctx.fillText(`SCAN_ID: ${scanId} | DEPTH: HIGH_RESOLUTION | ${new Date().toISOString()}`, width - 40, 48);
+    ctx.textAlign = "left";
+
+    // 3. Left Column (0-400)
+    // Verdict
     const verdictConfig = {
-      genuine: { color: "#10b981", bg: "rgba(16, 185, 129, 0.15)", label: "GENUINE" },
-      suspicious: { color: "#f59e0b", bg: "rgba(245, 158, 11, 0.15)", label: "SUSPICIOUS" },
-      trolling: { color: "#f43f5e", bg: "rgba(244, 63, 94, 0.15)", label: "TROLLING" },
+      genuine: { color: "#10b981", label: "GENUINE_INTERACTION" },
+      suspicious: { color: "#f59e0b", label: "SUSPICIOUS_ACTIVITY" },
+      trolling: { color: "#f43f5e", label: "TROLL_CONFIRMED" },
     };
     const vc = verdictConfig[result.verdict!];
 
-    // Header - Logo
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(40, 35, 32, 32);
-    ctx.font = "bold 24px system-ui, -apple-system, sans-serif";
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText("TrollOrNot", 82, 58);
-
-    // Verdict badge area
-    ctx.fillStyle = vc.bg;
-    ctx.beginPath();
-    ctx.roundRect(40, 90, 340, 140, 16);
-    ctx.fill();
     ctx.strokeStyle = vc.color;
     ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Verdict label
-    ctx.font = "bold 36px system-ui, -apple-system, sans-serif";
+    ctx.strokeRect(40, 110, 320, 80);
+    
+    ctx.font = "bold 12px monospace";
     ctx.fillStyle = vc.color;
-    ctx.fillText(vc.label, 70, 145);
+    ctx.fillText("STATUS_RESULT", 55, 130);
+    ctx.font = "bold 28px system-ui, sans-serif";
+    ctx.fillText(vc.label, 55, 170);
 
     // Score
-    ctx.font = "600 20px system-ui, -apple-system, sans-serif";
-    ctx.fillStyle = "#a1a1aa";
-    ctx.fillText(`Troll Score: ${result.overallScore}/100`, 70, 180);
-
-    // Score bar background
-    ctx.fillStyle = "#27272a";
-    ctx.beginPath();
-    ctx.roundRect(70, 195, 280, 12, 6);
-    ctx.fill();
-
-    // Score bar fill
-    ctx.fillStyle = vc.color;
-    ctx.beginPath();
-    ctx.roundRect(70, 195, (280 * result.overallScore!) / 100, 12, 6);
-    ctx.fill();
-
-    // Signals section
-    ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+    ctx.font = "bold 12px monospace";
     ctx.fillStyle = "#71717a";
-    ctx.fillText("SIGNALS DETECTED", 40, 265);
+    ctx.fillText("AGGREGATE_RISK_SCORE", 40, 230);
+    ctx.font = "bold 48px system-ui, sans-serif";
+    ctx.fillStyle = "#f4f4f5";
+    ctx.fillText(`${result.overallScore}`, 40, 280);
+    ctx.font = "16px monospace";
+    ctx.fillStyle = "#3f3f46";
+    ctx.fillText("/ 100.00", 140, 275);
 
-    const signals = Object.entries(result.aggregateSignals || {})
-      .filter(([, v]) => v > 0)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 4);
+    // Signals
+    ctx.font = "bold 12px monospace";
+    ctx.fillStyle = "#71717a";
+    ctx.fillText("BEHAVIORAL_SIGNALS", 40, 330);
 
-    let signalY = 290;
-    ctx.font = "500 16px system-ui, -apple-system, sans-serif";
+    let signalY = 360;
+    const signals = Object.entries(result.aggregateSignals || {}).slice(0, 5);
     for (const [key, value] of signals) {
-      const label = SIGNAL_LABELS[key as keyof SignalBreakdown];
-      ctx.fillStyle = "#d4d4d8";
-      ctx.fillText(`• ${label}:`, 50, signalY);
-      ctx.fillStyle = value > 50 ? "#f43f5e" : value > 25 ? "#f59e0b" : "#a1a1aa";
-      ctx.fillText(`${Math.round(value)}%`, 200, signalY);
-      signalY += 28;
-    }
-
-    // Conversation section
-    ctx.fillStyle = "#18181b";
-    ctx.beginPath();
-    ctx.roundRect(400, 90, 760, 545, 16);
-    ctx.fill();
-    ctx.strokeStyle = "#27272a";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-    ctx.fillStyle = "#71717a";
-    ctx.fillText("CONVERSATION", 425, 125);
-
-    // Draw messages
-    let msgY = 155;
-    const maxMessages = 8;
-    const messages = result.messages?.slice(0, maxMessages) || [];
-
-    for (const msg of messages) {
-      if (msgY > 580) break;
-
-      // Avatar circle
-      const avatarColor = msg.verdict === "trolling" ? "#f43f5e" :
-                          msg.verdict === "suspicious" ? "#f59e0b" : "#3f3f46";
-      ctx.fillStyle = avatarColor;
-      ctx.beginPath();
-      ctx.arc(445, msgY + 10, 14, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Avatar letter
-      ctx.font = "bold 12px system-ui, -apple-system, sans-serif";
-      ctx.fillStyle = "#ffffff";
-      ctx.textAlign = "center";
-      ctx.fillText(msg.author[0].toUpperCase(), 445, msgY + 15);
-      ctx.textAlign = "left";
-
-      // Author name
-      ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-      ctx.fillStyle = "#e4e4e7";
-      ctx.fillText(msg.author, 470, msgY + 5);
-
-      // Message content (truncate if needed)
-      ctx.font = "400 14px system-ui, -apple-system, sans-serif";
+      ctx.font = "11px monospace";
       ctx.fillStyle = "#a1a1aa";
-      let content = msg.content;
-      if (content.length > 80) content = content.substring(0, 77) + "...";
-
-      // Word wrap
-      const words = content.split(" ");
-      let line = "";
-      let lineY = msgY + 25;
-      const maxWidth = 680;
-
-      for (const word of words) {
-        const testLine = line + word + " ";
-        const metrics = ctx.measureText(testLine);
-        if (metrics.width > maxWidth && line !== "") {
-          ctx.fillText(line.trim(), 470, lineY);
-          line = word + " ";
-          lineY += 20;
-          if (lineY > msgY + 45) break;
-        } else {
-          line = testLine;
-        }
-      }
-      if (lineY <= msgY + 45) ctx.fillText(line.trim(), 470, lineY);
-
-      msgY += 65;
+      ctx.fillText(SIGNAL_LABELS[key as keyof SignalBreakdown].toUpperCase(), 40, signalY);
+      
+      // Bar
+      ctx.fillStyle = "#18181b";
+      ctx.fillRect(40, signalY + 8, 320, 4);
+      ctx.fillStyle = value > 50 ? "#f43f5e" : value > 20 ? "#f59e0b" : "#10b981";
+      ctx.fillRect(40, signalY + 8, 3.2 * value, 4);
+      
+      ctx.textAlign = "right";
+      ctx.fillText(`${Math.round(value)}%`, 360, signalY);
+      ctx.textAlign = "left";
+      signalY += 35;
     }
 
-    if (result.messages && result.messages.length > maxMessages) {
-      ctx.font = "italic 14px system-ui, -apple-system, sans-serif";
-      ctx.fillStyle = "#52525b";
-      ctx.fillText(`+ ${result.messages.length - maxMessages} more messages...`, 425, 610);
-    }
-
-    // Recommendation at bottom left
+    // Recommendation (Fills bottom left)
     if (result.recommendation) {
-      ctx.fillStyle = "rgba(39, 39, 42, 0.8)";
-      ctx.beginPath();
-      ctx.roundRect(40, 420, 340, 100, 12);
-      ctx.fill();
+      ctx.fillStyle = "#18181b";
+      ctx.fillRect(40, 540, 320, 95);
+      ctx.strokeStyle = "#27272a";
+      ctx.strokeRect(40, 540, 320, 95);
 
-      ctx.font = "bold 12px system-ui, -apple-system, sans-serif";
+      ctx.font = "bold 11px monospace";
       ctx.fillStyle = "#71717a";
-      ctx.fillText("RECOMMENDATION", 55, 445);
-
-      ctx.font = "400 13px system-ui, -apple-system, sans-serif";
+      ctx.fillText("DIRECTIVE/RECOMMENDATION", 55, 560);
+      
+      ctx.font = "13px system-ui, sans-serif";
       ctx.fillStyle = "#d4d4d8";
-
-      // Word wrap recommendation
       const recWords = result.recommendation.split(" ");
       let recLine = "";
-      let recY = 465;
+      let recY = 580;
       for (const word of recWords) {
-        const testLine = recLine + word + " ";
-        if (ctx.measureText(testLine).width > 310) {
+        if (ctx.measureText(recLine + word).width > 290) {
           ctx.fillText(recLine.trim(), 55, recY);
           recLine = word + " ";
           recY += 18;
-          if (recY > 510) break;
+          if (recY > 625) break;
+        } else recLine += word + " ";
+      }
+      if (recY <= 625) ctx.fillText(recLine.trim(), 55, recY);
+    }
+
+    // 4. Right Column (Evidence)
+    ctx.strokeStyle = "#27272a";
+    ctx.beginPath();
+    ctx.moveTo(400, 80);
+    ctx.lineTo(400, height);
+    ctx.stroke();
+
+    ctx.font = "bold 12px monospace";
+    ctx.fillStyle = "#71717a";
+    ctx.fillText("TRANSCRIPT_EVIDENCE", 430, 115);
+
+    // Messages - more compact, show more
+    let msgY = 140;
+    const maxMsgY = 620;
+    const messages = result.messages?.slice(0, 10) || [];
+
+    for (const msg of messages) {
+      if (msgY > maxMsgY) break;
+
+      // Author with verdict indicator
+      const isTroll = msg.verdict === "trolling";
+      const isSus = msg.verdict === "suspicious";
+      ctx.fillStyle = isTroll ? "#f43f5e" : isSus ? "#f59e0b" : "#71717a";
+      ctx.font = "bold 12px system-ui, sans-serif";
+      const authorText = `${isTroll ? "▸ " : ""}${msg.author}`;
+      ctx.fillText(authorText, 430, msgY);
+
+      // Message content - better word wrap
+      ctx.fillStyle = isTroll ? "#fca5a5" : "#a1a1aa";
+      ctx.font = "13px system-ui, sans-serif";
+
+      const maxWidth = 720;
+      const maxLines = 2;
+      const words = msg.content.split(" ");
+      let lines: string[] = [];
+      let currentLine = "";
+
+      for (const word of words) {
+        const testLine = currentLine + (currentLine ? " " : "") + word;
+        if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+          if (lines.length >= maxLines) break;
         } else {
-          recLine = testLine;
+          currentLine = testLine;
         }
       }
-      if (recY <= 510) ctx.fillText(recLine.trim(), 55, recY);
+      if (currentLine && lines.length < maxLines) {
+        lines.push(currentLine);
+      }
+
+      // Truncate last line if needed
+      if (lines.length === maxLines && words.length > lines.join(" ").split(" ").length) {
+        const lastLine = lines[maxLines - 1];
+        if (ctx.measureText(lastLine + "...").width > maxWidth) {
+          lines[maxLines - 1] = lastLine.substring(0, lastLine.length - 3) + "...";
+        } else {
+          lines[maxLines - 1] = lastLine + "...";
+        }
+      }
+
+      let lineY = msgY + 18;
+      for (const line of lines) {
+        ctx.fillText(line, 430, lineY);
+        lineY += 17;
+      }
+
+      msgY = lineY + 12;
+    }
+
+    // Show count of remaining messages
+    if (result.messages && result.messages.length > messages.length) {
+      ctx.font = "11px monospace";
+      ctx.fillStyle = "#52525b";
+      ctx.fillText(`+ ${result.messages.length - messages.length} more messages`, 430, Math.min(msgY, 650));
     }
 
     // Footer
-    ctx.font = "500 14px system-ui, -apple-system, sans-serif";
-    ctx.fillStyle = "#52525b";
-    ctx.fillText("trollornot.com", 40, 650);
+    ctx.font = "11px monospace";
+    ctx.fillStyle = "#3f3f46";
+    ctx.fillText("trollornot.com", 40, 660);
 
-    // Convert to blob
     return new Promise((resolve) => {
       canvas.toBlob((blob) => resolve(blob), "image/png", 1.0);
     });
