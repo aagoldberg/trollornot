@@ -234,78 +234,303 @@ function ChatMessage({ message, showHighlights }: { message: MessageAnalysis; sh
   );
 }
 
-function CopyableVerdict({ result }: { result: AnalysisResult }) {
-  const [copied, setCopied] = useState(false);
+function ShareableImage({ result }: { result: AnalysisResult }) {
+  const [status, setStatus] = useState<"idle" | "generating" | "copied" | "downloaded">("idle");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const verdictText = useMemo(() => {
-    if (!result.success) return "";
+  const generateImage = useCallback(async (): Promise<Blob | null> => {
+    const canvas = canvasRef.current;
+    if (!canvas || !result.success) return null;
 
-    const verdictLabel = {
-      genuine: "GENUINE CONVERSATION",
-      suspicious: "SUSPICIOUS - POSSIBLE TROLLING",
-      trolling: "LIKELY TROLLING",
-    }[result.verdict!];
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
 
-    let text = `TrollOrNot Analysis
-━━━━━━━━━━━━━━━━━━━━
-Verdict: ${verdictLabel} (${result.overallScore}/100)
+    // Canvas dimensions (Twitter-friendly 16:9)
+    const width = 1200;
+    const height = 675;
+    canvas.width = width;
+    canvas.height = height;
 
-`;
+    // Background
+    ctx.fillStyle = "#09090b";
+    ctx.fillRect(0, 0, width, height);
 
-    if (result.aggregateSignals) {
-      text += `Signals Detected:\n`;
-      const signals = Object.entries(result.aggregateSignals)
-        .filter(([, v]) => v > 0)
-        .sort(([, a], [, b]) => b - a);
-      for (const [key, value] of signals) {
-        text += `• ${SIGNAL_LABELS[key as keyof SignalBreakdown]}: ${value}%\n`;
-      }
-      text += "\n";
+    // Subtle gradient overlay
+    const gradient = ctx.createRadialGradient(300, 200, 0, 300, 200, 400);
+    gradient.addColorStop(0, "rgba(30, 30, 36, 0.8)");
+    gradient.addColorStop(1, "transparent");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    // Verdict colors
+    const verdictConfig = {
+      genuine: { color: "#10b981", bg: "rgba(16, 185, 129, 0.15)", label: "GENUINE" },
+      suspicious: { color: "#f59e0b", bg: "rgba(245, 158, 11, 0.15)", label: "SUSPICIOUS" },
+      trolling: { color: "#f43f5e", bg: "rgba(244, 63, 94, 0.15)", label: "TROLLING" },
+    };
+    const vc = verdictConfig[result.verdict!];
+
+    // Header - Logo
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(40, 35, 32, 32);
+    ctx.font = "bold 24px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText("TrollOrNot", 82, 58);
+
+    // Verdict badge area
+    ctx.fillStyle = vc.bg;
+    ctx.beginPath();
+    ctx.roundRect(40, 90, 340, 140, 16);
+    ctx.fill();
+    ctx.strokeStyle = vc.color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Verdict label
+    ctx.font = "bold 36px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = vc.color;
+    ctx.fillText(vc.label, 70, 145);
+
+    // Score
+    ctx.font = "600 20px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "#a1a1aa";
+    ctx.fillText(`Troll Score: ${result.overallScore}/100`, 70, 180);
+
+    // Score bar background
+    ctx.fillStyle = "#27272a";
+    ctx.beginPath();
+    ctx.roundRect(70, 195, 280, 12, 6);
+    ctx.fill();
+
+    // Score bar fill
+    ctx.fillStyle = vc.color;
+    ctx.beginPath();
+    ctx.roundRect(70, 195, (280 * result.overallScore!) / 100, 12, 6);
+    ctx.fill();
+
+    // Signals section
+    ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "#71717a";
+    ctx.fillText("SIGNALS DETECTED", 40, 265);
+
+    const signals = Object.entries(result.aggregateSignals || {})
+      .filter(([, v]) => v > 0)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 4);
+
+    let signalY = 290;
+    ctx.font = "500 16px system-ui, -apple-system, sans-serif";
+    for (const [key, value] of signals) {
+      const label = SIGNAL_LABELS[key as keyof SignalBreakdown];
+      ctx.fillStyle = "#d4d4d8";
+      ctx.fillText(`• ${label}:`, 50, signalY);
+      ctx.fillStyle = value > 50 ? "#f43f5e" : value > 25 ? "#f59e0b" : "#a1a1aa";
+      ctx.fillText(`${Math.round(value)}%`, 200, signalY);
+      signalY += 28;
     }
 
-    if (result.flaggedUsers && result.flaggedUsers.length > 0) {
-      text += `Flagged Users:\n`;
-      for (const user of result.flaggedUsers) {
-        text += `• @${user.author} (avg score: ${user.avgScore}, ${user.messageCount} messages)\n`;
+    // Conversation section
+    ctx.fillStyle = "#18181b";
+    ctx.beginPath();
+    ctx.roundRect(400, 90, 760, 545, 16);
+    ctx.fill();
+    ctx.strokeStyle = "#27272a";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "#71717a";
+    ctx.fillText("CONVERSATION", 425, 125);
+
+    // Draw messages
+    let msgY = 155;
+    const maxMessages = 8;
+    const messages = result.messages?.slice(0, maxMessages) || [];
+
+    for (const msg of messages) {
+      if (msgY > 580) break;
+
+      // Avatar circle
+      const avatarColor = msg.verdict === "trolling" ? "#f43f5e" :
+                          msg.verdict === "suspicious" ? "#f59e0b" : "#3f3f46";
+      ctx.fillStyle = avatarColor;
+      ctx.beginPath();
+      ctx.arc(445, msgY + 10, 14, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Avatar letter
+      ctx.font = "bold 12px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.fillText(msg.author[0].toUpperCase(), 445, msgY + 15);
+      ctx.textAlign = "left";
+
+      // Author name
+      ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = "#e4e4e7";
+      ctx.fillText(msg.author, 470, msgY + 5);
+
+      // Message content (truncate if needed)
+      ctx.font = "400 14px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = "#a1a1aa";
+      let content = msg.content;
+      if (content.length > 80) content = content.substring(0, 77) + "...";
+
+      // Word wrap
+      const words = content.split(" ");
+      let line = "";
+      let lineY = msgY + 25;
+      const maxWidth = 680;
+
+      for (const word of words) {
+        const testLine = line + word + " ";
+        const metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && line !== "") {
+          ctx.fillText(line.trim(), 470, lineY);
+          line = word + " ";
+          lineY += 20;
+          if (lineY > msgY + 45) break;
+        } else {
+          line = testLine;
+        }
       }
-      text += "\n";
+      if (lineY <= msgY + 45) ctx.fillText(line.trim(), 470, lineY);
+
+      msgY += 65;
     }
 
+    if (result.messages && result.messages.length > maxMessages) {
+      ctx.font = "italic 14px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = "#52525b";
+      ctx.fillText(`+ ${result.messages.length - maxMessages} more messages...`, 425, 610);
+    }
+
+    // Recommendation at bottom left
     if (result.recommendation) {
-      text += `Recommendation: ${result.recommendation}\n`;
+      ctx.fillStyle = "rgba(39, 39, 42, 0.8)";
+      ctx.beginPath();
+      ctx.roundRect(40, 420, 340, 100, 12);
+      ctx.fill();
+
+      ctx.font = "bold 12px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = "#71717a";
+      ctx.fillText("RECOMMENDATION", 55, 445);
+
+      ctx.font = "400 13px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = "#d4d4d8";
+
+      // Word wrap recommendation
+      const recWords = result.recommendation.split(" ");
+      let recLine = "";
+      let recY = 465;
+      for (const word of recWords) {
+        const testLine = recLine + word + " ";
+        if (ctx.measureText(testLine).width > 310) {
+          ctx.fillText(recLine.trim(), 55, recY);
+          recLine = word + " ";
+          recY += 18;
+          if (recY > 510) break;
+        } else {
+          recLine = testLine;
+        }
+      }
+      if (recY <= 510) ctx.fillText(recLine.trim(), 55, recY);
     }
 
-    text += `━━━━━━━━━━━━━━━━━━━━
-Analyzed by TrollOrNot`;
+    // Footer
+    ctx.font = "500 14px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "#52525b";
+    ctx.fillText("trollornot.com", 40, 650);
 
-    return text;
+    // Convert to blob
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png", 1.0);
+    });
   }, [result]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(verdictText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyImage = async () => {
+    setStatus("generating");
+    try {
+      const blob = await generateImage();
+      if (blob) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": blob })
+        ]);
+        setStatus("copied");
+        setTimeout(() => setStatus("idle"), 2000);
+      }
+    } catch (err) {
+      console.error("Failed to copy image:", err);
+      // Fallback to download if clipboard fails
+      handleDownload();
+    }
+  };
+
+  const handleDownload = async () => {
+    setStatus("generating");
+    const blob = await generateImage();
+    if (blob) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `trollornot-${result.verdict}-${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus("downloaded");
+      setTimeout(() => setStatus("idle"), 2000);
+    }
   };
 
   return (
-    <div className="mt-4">
+    <div className="mt-4 space-y-2">
+      <canvas ref={canvasRef} className="hidden" />
       <button
-        onClick={handleCopy}
-        className="w-full py-3 px-4 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg font-medium text-sm hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"
+        onClick={handleCopyImage}
+        disabled={status === "generating"}
+        className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-rose-500 text-white rounded-lg font-medium text-sm hover:from-purple-500 hover:to-rose-400 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
       >
-        {copied ? (
+        {status === "generating" ? (
+          <>
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            Generating...
+          </>
+        ) : status === "copied" ? (
           <>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            Copied!
+            Image Copied!
           </>
         ) : (
           <>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            Copy Verdict
+            Copy as Image
+          </>
+        )}
+      </button>
+      <button
+        onClick={handleDownload}
+        disabled={status === "generating"}
+        className="w-full py-2 px-4 bg-zinc-800 text-zinc-300 rounded-lg font-medium text-sm hover:bg-zinc-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+      >
+        {status === "downloaded" ? (
+          <>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Downloaded!
+          </>
+        ) : (
+          <>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Image
           </>
         )}
       </button>
@@ -572,7 +797,7 @@ Supported formats: Discord, Slack, Twitter, iMessage, etc."
                         </span>
                       )}
                     </div>
-                    <CopyableVerdict result={result} />
+                    <ShareableImage result={result} />
                   </BentoCard>
 
                   <BentoCard title="Signal Breakdown">
